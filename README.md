@@ -38,8 +38,6 @@ Just type `make`.
 
 ## Limitations
 
-`lspu` does *not* currently work when started in a FreeBSD jail!
-
 It will omit listing processes if binaries or shared libraries are already deleted or replaced; [lsop] might help you there.
 
 [lsop]: https://github.com/606u/lsop "lsop - lists processes running with outdated binaries or shared libraries"
