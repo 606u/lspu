@@ -1,3 +1,5 @@
+/* -*- mode: C; eval: (c-set-style "bsd"); -*- */
+
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/param.h>
@@ -15,9 +17,14 @@
 #include <sysexits.h>
 #include <unistd.h>
 
-static const char *me = "lspu";
-
 static int hflag = 0, vflag = 0;
+
+#define trace(lvl, ...)				\
+	do {					\
+		if (lvl <= vflag) {		\
+			warnx(__VA_ARGS__);	\
+		}				\
+	} while (0)
 
 #define EXIT_MATCHES 2
 
@@ -145,9 +152,7 @@ scan_process(struct procstat *prstat,
 	if (!head)
 		return -1;
 
-	if (vflag > 1)
-		fprintf(stderr, "%s: checking '%s', pid %u\n",
-			me, proc->ki_comm, proc->ki_pid);
+	trace(2, "checking '%s', pid %u", proc->ki_comm, proc->ki_pid);
 	for (i = 0; i < cnt; ++i) {
 		struct kinfo_vmentry *it = head + i;
 		/* requirements to consider VM mapping for further test:
@@ -156,11 +161,9 @@ scan_process(struct procstat *prstat,
 		if (it->kve_type == KVME_TYPE_VNODE &&
 		    (it->kve_protection & prot) == prot) {
 			struct FileInfo *fi;
-			if (vflag > 1)
-				fprintf(stderr, "%s:  ... using dev %lu, ino %lu\n",
-					me,
-					(unsigned long)it->kve_vn_fsid,
-					(unsigned long)it->kve_vn_fileid);
+			trace(2, "  ... using dev %lu, ino %lu",
+			      (unsigned long)it->kve_vn_fsid,
+			      (unsigned long)it->kve_vn_fileid);
 			fi = lookup(it->kve_vn_fsid,
 				    (ino_t)it->kve_vn_fileid);
 			if (fi) {
@@ -214,19 +217,16 @@ get_fileid(struct procstat *prstat,
 				}
 				procstat_freevmmap(prstat, head);
 			} else {
-				fprintf(stderr, "%s: cannot get process memory map: %s\n",
-					me, strerror(errno));
+				warn("cannot get process memory map");
 				res = -1;
 			}
 			munmap(ptr, /*len*/1);
 		} else {
-			fprintf(stderr, "%s: cannot mmap file '%s': %s\n",
-				me, path, strerror(errno));
+			warn("cannot mmap file '%s'", path);
 		}
 		close(fd);
 	} else {
-		fprintf(stderr, "%s: cannot open file '%s': %s\n",
-			me, path, strerror(errno));
+		warn("cannot open file '%s'", path);
 	}
 
 	if (res)
@@ -248,8 +248,7 @@ fill_hashtable_from_cmdline_paths(struct procstat *prstat,
 		n_buckets *= 2;
 	n_buckets *= 2;
 	if (alloc_ht(n_buckets) != 0) {
-		fprintf(stderr, "%s: cannot allocate memory: %s\n",
-			me, strerror(errno));
+		warn("cannot allocate memory");
 		return -1;
 	}
 
@@ -258,8 +257,7 @@ fill_hashtable_from_cmdline_paths(struct procstat *prstat,
 	struct kinfo_proc *self =
 		procstat_getprocs(prstat, KERN_PROC_PID, getpid(), &n_procs);
 	if (!self) {
-		fprintf(stderr, "%s: cannot acquire 'lspu' process info: %s\n",
-			me, strerror(errno));
+		warn("cannot acquire 'lspu' process info");
 		return -1;
 	}
 
@@ -273,16 +271,14 @@ fill_hashtable_from_cmdline_paths(struct procstat *prstat,
 		if (!rv) {
 			rv = add_file(&id, path);
 			if (rv) {
-				fprintf(stderr, "%s: cannot allocate memory: %s\n",
-					me, strerror(errno));
+				warn("cannot allocate memory");
 				procstat_freeprocs(prstat, self);
 				return -1;
 			}
-			if (vflag)
-				fprintf(stderr, "%s: file '%s' found at dev %lu, ino %lu\n",
-					me, path,
-					(unsigned long)id.device_id,
-					(unsigned long)id.inode);
+			trace(1, "file '%s' found at dev %lu, ino %lu",
+			      path,
+			      (unsigned long)id.device_id,
+			      (unsigned long)id.inode);
 		} else {
 			res = 1;
 		}
@@ -295,8 +291,8 @@ fill_hashtable_from_cmdline_paths(struct procstat *prstat,
 static int
 usage(void)
 {
-	fprintf(stderr, "Lists processes using given binaries or shared objects\n");
-	fprintf(stderr, "usage: lspu path...\n");
+	puts("Lists processes using given binaries or shared objects");
+	puts("usage: lspu path...");
 	return EX_USAGE;
 }
 
@@ -322,15 +318,12 @@ main(int argc, char *argv[])
 		return usage();
 
 	hash_init();
-	if (alloc_ht(argc) != 0) {
-		fprintf(stderr, "%s: cannot initialize: %s\n",
-			me, strerror(errno));
-		return EXIT_FAILURE;
-	}
+	if (alloc_ht(argc) != 0)
+		err(EXIT_FAILURE, "cannot initialize");
 
 	prstat = procstat_open_sysctl();
 	if (prstat == NULL)
-		errx(1, "procstat_open()");
+		errx(EXIT_FAILURE, "procstat_open");
 
 	rv = fill_hashtable_from_cmdline_paths(prstat, argc, argv);
 	if (rv == -1)
@@ -338,7 +331,7 @@ main(int argc, char *argv[])
 
 	p = procstat_getprocs(prstat, KERN_PROC_PROC, 0, &cnt);
 	if (p == NULL)
-		errx(1, "procstat_getprocs()");
+		errx(EXIT_FAILURE, "procstat_getprocs");
 
 	for (i = 0; i < cnt; i++) {
 		struct FileInfo *match;
